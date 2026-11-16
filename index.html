@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cortador de Vídeo e Áudio</title>
+<style>
+  :root{--bg:#0f1420;--panel:#171e2e;--line:#273149;--txt:#e6ebf5;--mut:#8b96ad;--blue:#3b82f6;--blue2:#60a5fa;--ok:#22c55e;--bad:#ef4444}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1000px;margin:0 auto;padding:20px 16px 40px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+  h1{font-size:20px;margin:0;font-weight:650}
+  h1 span{color:var(--blue2)}
+  .engine{font-size:12.5px;color:var(--mut);display:flex;align-items:center;gap:6px;white-space:nowrap}
+  .dot{width:8px;height:8px;border-radius:50%;background:#eab308}
+  .dot.ok{background:var(--ok)} .dot.bad{background:var(--bad)}
+  button,select,input[type=text]{font:inherit;color:var(--txt);background:#212a3e;border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+  button{cursor:pointer;transition:background .15s}
+  button:hover:not(:disabled){background:#2a3550}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.primary{background:var(--blue);border-color:var(--blue);font-weight:600}
+  button.primary:hover:not(:disabled){background:#2f6fe0}
+  .drop{border:2px dashed #34406099;border-radius:14px;padding:70px 20px;text-align:center;cursor:pointer;background:var(--panel)}
+  .drop.over{border-color:var(--blue2);background:#1a2540}
+  .drop b{display:block;font-size:18px;margin-bottom:6px}
+  .drop small{color:var(--mut)}
+  .hidden{display:none!important}
+  .fileRow{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
+  .fname{color:var(--mut);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  video{width:100%;max-height:52vh;background:#000;border-radius:10px;display:block}
+  .tl{position:relative;margin-top:12px;height:96px;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;touch-action:none;cursor:pointer}
+  .tl canvas{width:100%;height:100%;display:block}
+  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px}
+  .row label{color:var(--mut);font-size:13px}
+  .t{width:110px;text-align:center;font-variant-numeric:tabular-nums}
+  .pill{background:#1d2740;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-variant-numeric:tabular-nums}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+  @media(max-width:700px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .card h2{font-size:15px;margin:0 0 6px}
+  .card .row{margin-top:8px}
+  .note{color:var(--mut);font-size:12.5px;margin-top:8px}
+  .chk{display:flex;align-items:center;gap:6px;color:var(--txt)!important;font-size:14px!important;cursor:pointer}
+  .status{margin-top:14px;padding:10px 12px;border-radius:10px;background:var(--panel);border:1px solid var(--line);color:var(--mut)}
+  .status:empty{display:none}
+  .status.err{color:var(--bad)} .status.ok{color:var(--ok)}
+  .status pre{white-space:pre-wrap;margin:6px 0 0;font-size:12px;color:#fca5a5}
+  .bar{height:8px;background:#212a3e;border-radius:99px;overflow:hidden;margin-top:8px}
+  .bar i{display:block;height:100%;width:0;background:var(--blue);transition:width .2s}
+  kbd{background:#212a3e;border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:12px}
+  .keys{color:var(--mut);font-size:12.5px;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>✂️ Cortador de <span>Vídeo e Áudio</span></h1>
+    <div class="engine"><span class="dot" id="dot"></span><span id="engineTxt">Carregando o FFmpeg…</span></div>
+  </header>
+
+  <div id="drop" class="drop">
+    <b>Arraste um vídeo aqui ou clique para escolher</b>
+    <small>MP4, MOV, MKV, AVI, WebM… O vídeo não é enviado para lugar nenhum: tudo acontece no seu navegador.</small>
+    <input id="file" type="file" accept="video/*,audio/*,.mkv,.ts,.mts" class="hidden">
+  </div>
+
+  <div id="editor" class="hidden">
+    <div class="fileRow"><span class="fname" id="fname"></span><button id="btnTrocar">Abrir outro vídeo</button></div>
+    <video id="video" controls playsinline></video>
+    <div class="tl" id="tl"><canvas id="cv"></canvas></div>
+
+    <div class="row">
+      <label>Início</label>
+      <input id="inA" class="t" type="text">
+      <button id="markA" title="Usar a posição atual (tecla I)">⇤ Marcar início</button>
+      <span style="width:8px"></span>
+      <label>Fim</label>
+      <input id="inB" class="t" type="text">
+      <button id="markB" title="Usar a posição atual (tecla O)">Marcar fim ⇥</button>
+      <span class="pill" id="len">Trecho: 00:00.0</span>
+      <button id="preview">▶ Ver trecho</button>
+      <button id="resetSel">Tudo</button>
+    </div>
+    <div class="keys"><kbd>Espaço</kbd> play/pause · <kbd>I</kbd> início · <kbd>O</kbd> fim · <kbd>←</kbd>/<kbd>→</kbd> ±1 s (<kbd>Shift</kbd> ±0,1 s) · arraste as alças azuis</div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>🎬 Cortar vídeo</h2>
+        <div class="row">
+          <select id="mode">
+            <option value="fast">Instantâneo (qualidade original)</option>
+            <option value="precise">Corte exato (recodifica, mais lento)</option>
+          </select>
+        </div>
+        <div class="row"><label class="chk"><input type="checkbox" id="mute"> Remover o som</label></div>
+        <div class="row"><button class="primary" id="btnVideo" disabled>Baixar vídeo cortado</button></div>
+        <div class="note" id="modeNote"></div>
+      </div>
+      <div class="card">
+        <h2>🎵 Extrair áudio</h2>
+        <div class="row">
+          <select id="afmt">
+            <option value="mp3">MP3</option>
+            <option value="m4a">M4A (AAC)</option>
+            <option value="wav">WAV (sem perda)</option>
+          </select>
+          <select id="akbps">
+            <option value="128">128 kbps</option>
+            <option value="192" selected>192 kbps</option>
+            <option value="320">320 kbps</option>
+          </select>
+        </div>
+        <div class="row"><label class="chk"><input type="checkbox" id="whole"> Vídeo inteiro (ignorar o corte)</label></div>
+        <div class="row"><button class="primary" id="btnAudio" disabled>Baixar áudio</button></div>
+      </div>
+    </div>
+
+    <div class="status" id="status"></div>
+    <div class="bar hidden" id="bar"><i id="barI"></i></div>
+    <div class="row hidden" id="cancelRow"><button id="btnCancel">Cancelar</button></div>
+  </div>
+</div>
+
+<!-- Código do worker: roda o FFmpeg (WebAssembly) fora da tela, para a página não travar -->
+<script id="workerSrc" type="text/plain">
+const CDNS = [
+  'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd',
+  'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd'
+];
+let ff = null, logs = [];
+
+async function fetchWasm(url){
+  const r = await fetch(url);
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const reader = r.body.getReader(), parts = [];
+  let loaded = 0;
+  for(;;){
+    const {done, value} = await reader.read();
+    if(done) break;
+    parts.push(value); loaded += value.length;
+    postMessage({type:'dl', loaded});
+  }
+  return URL.createObjectURL(new Blob(parts, {type:'application/wasm'}));
+}
+
+async function load(){
+  let last;
+  for(const base of CDNS){
+    try{
+      importScripts(base + '/ffmpeg-core.js');
+      const wasmURL = await fetchWasm(base + '/ffmpeg-core.wasm');
+      ff = await self.createFFmpegCore({
+        mainScriptUrlOrBlob: base + '/ffmpeg-core.js#' + btoa(JSON.stringify({wasmURL, workerURL: ''}))
+      });
+      ff.setLogger(d => { const m = d && d.message != null ? d.message : String(d); logs.push(m); if(logs.length > 300) logs.shift(); postMessage({type:'log', message: m}); });
+      ff.setProgress(() => {});
+      try{ ff.FS.mkdir('/in'); }catch(e){}
+      try{ ff.FS.mkdir('/out'); }catch(e){}
+      return;
+    }catch(e){ last = e; }
+  }
+  throw last || new Error('não carregou');
+}
+
+function run(file, args, outName){
+  logs = [];
+  ff.FS.mount(ff.FS.filesystems.WORKERFS, {files: [file]}, '/in');
+  try{
+    ff.setTimeout(-1);
+    ff.exec(...args);
+    const ret = ff.ret;
+    ff.reset();
+    if(!outName) return {ret, logs: logs.join('\n')};
+    let data = null;
+    try{ data = ff.FS.readFile('/out/' + outName); ff.FS.unlink('/out/' + outName); }catch(e){}
+    if(ret !== 0 || !data || !data.length) throw new Error(logs.slice(-8).join('\n') || ('FFmpeg terminou com código ' + ret));
+    return {ret, data};
+  } finally {
+    try{ ff.FS.unmount('/in'); }catch(e){}
+  }
+}
+
+onmessage = async (ev) => {
+  const {id, cmd, file, args, outName} = ev.data;
+  try{
+    if(cmd === 'load'){ await load(); postMessage({id, ok:true}); return; }
+    const r = run(file, args, outName);
+    if(r.data) postMessage({id, ok:true, data:r.data}, [r.data.buffer]);
+    else postMessage({id, ok:true, logs:r.logs});
+  }catch(e){
+    postMessage({id, ok:false, error: (e && e.message) || String(e)});
+  }
+};
+</script>
+
+<script>
+const $ = s => document.querySelector(s);
+const video = $('#video'), cv = $('#cv'), tl = $('#tl');
+let file = null, url = null, dur = 0, selA = 0, selB = 0, peaks = null;
+let busy = false, ready = false, previewing = false, drag = null;
+
+/* ---------- worker / FFmpeg ---------- */
+let worker = null, msgId = 0, pending = {}, onLog = null;
+function startWorker(){
+  ready = false; updateButtons();
+  $('#dot').className = 'dot'; $('#engineTxt').textContent = 'Carregando o FFmpeg…';
+  const src = $('#workerSrc').textContent;
+  worker = new Worker(URL.createObjectURL(new Blob([src], {type:'text/javascript'})));
+  worker.onmessage = ev => {
+    const m = ev.data;
+    if(m.type === 'dl'){ $('#engineTxt').textContent = 'Baixando o FFmpeg… ' + (m.loaded/1048576).toFixed(0) + ' MB (só na 1ª vez)'; return; }
+    if(m.type === 'log'){ onLog && onLog(m.message); return; }
+    const p = pending[m.id]; if(!p) return;
+    delete pending[m.id];
+    m.ok ? p.res(m) : p.rej(new Error(m.error));
+  };
+  call({cmd:'load'}).then(() => {
+    ready = true; updateButtons();
+    $('#dot').className = 'dot ok'; $('#engineTxt').textContent = 'FFmpeg pronto';
+    if(file && !dur) probe();
+  }).catch(e => {
+    $('#dot').className = 'dot bad'; $('#engineTxt').textContent = 'FFmpeg não carregou (sem internet?) — recarregue a página';
+  });
+}
+function call(msg, transfer){
+  return new Promise((res, rej) => { const id = ++msgId; pending[id] = {res, rej}; worker.postMessage({...msg, id}, transfer||[]); });
+}
+startWorker();
+
+/* ---------- tempo ---------- */
+function fmt(t){
+  if(!isFinite(t)) t = 0;
+  const ds = Math.round(Math.max(0,t)*10);
+  const h = Math.floor(ds/36000), m = Math.floor(ds%36000/600), s = Math.floor(ds%600/10), d = ds%10;
+  const mm = String(m).padStart(2,'0'), ss = String(s).padStart(2,'0');
+  return (h ? h+':'+mm : mm)+':'+ss+'.'+d;
+}
+function tname(t){ return fmt(t).replace(/^(\d+):(\d\d):/, '$1h$2m').replace(/:/, 'm').replace('.', 's'); }
+function parseT(str){
+  str = String(str).trim().replace(',', '.');
+  if(!str) return NaN;
+  const parts = str.split(':').map(Number);
+  if(parts.some(isNaN)) return NaN;
+  return parts.reverse().reduce((acc,v,i)=>acc + v*Math.pow(60,i), 0);
+}
+function fmtSize(b){ return b>1048576 ? (b/1048576).toFixed(1)+' MB' : Math.ceil(b/1024)+' KB'; }
+function esc(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ---------- status ---------- */
+function status(html, cls=''){ const el = $('#status'); el.className = 'status '+cls; el.innerHTML = html; }
+function setProgress(p){ const b = $('#bar'); if(p==null){ b.classList.add('hidden'); return; } b.classList.remove('hidden'); $('#barI').style.width = (Math.max(0,Math.min(1,p))*100).toFixed(1)+'%'; }
+function updateButtons(){
+  $('#btnVideo').disabled = busy || !ready || !file;
+  $('#btnAudio').disabled = busy || !ready || !file;
+  $('#btnTrocar').disabled = busy;
+}
+
+/* ---------- abrir arquivo ---------- */
+const drop = $('#drop'), inp = $('#file');
+drop.onclick = () => inp.click();
+inp.onchange = () => inp.files[0] && loadFile(inp.files[0]);
+['dragenter','dragover'].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
+['dragleave','drop'].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
+document.addEventListener('drop', e=>{ const f = e.dataTransfer.files[0]; if(f && !busy) loadFile(f); });
+$('#btnTrocar').onclick = () => { inp.value = ''; inp.click(); };
+
+function loadFile(f){
+  file = f; peaks = null; dur = 0; selA = 0; selB = 0;
+  if(url) URL.revokeObjectURL(url);
+  url = URL.createObjectURL(f);
+  drop.classList.add('hidden'); $('#editor').classList.remove('hidden');
+  $('#fname').textContent = f.name + ' · ' + fmtSize(f.size);
+  document.title = f.name + ' · Cortador';
+  status(''); setProgress(null); updateButtons();
+  video.src = url;
+  video.onloadedmetadata = () => {
+    if(isFinite(video.duration) && video.duration > 0){ dur = video.duration; selA = 0; selB = dur; syncInputs(); resizeCanvas(); }
+  };
+  video.onerror = () => { status('O navegador não consegue mostrar este vídeo (talvez seja H.265/HEVC), mas os cortes funcionam: digite os tempos de início e fim.'); if(!dur) probe(); };
+  setTimeout(() => { if(!dur) probe(); }, 1500);
+  makePeaks(f);
+}
+
+// duração pelo FFmpeg, quando o navegador não consegue ler o vídeo
+async function probe(){
+  if(!ready || !file || dur) return;
+  try{
+    const r = await call({cmd:'run', file, args:['-hide_banner','-i','/in/'+file.name]});
+    const m = /Duration:\s*(\d+):(\d+):([\d.]+)/.exec(r.logs);
+    if(m && !dur){ dur = (+m[1])*3600 + (+m[2])*60 + (+m[3]); selA = 0; selB = dur; syncInputs(); resizeCanvas(); }
+  }catch(e){}
+}
+
+async function makePeaks(f){
+  if(f.size > 500*1048576) return; // arquivo muito grande: pula a forma de onda
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)({sampleRate: 8000});
+    const ab = await ctx.decodeAudioData(await f.arrayBuffer());
+    ctx.close();
+    if(f !== file) return;
+    const ch = ab.getChannelData(0), N = 2000, step = Math.max(1, Math.floor(ch.length/N));
+    const p = new Float32Array(N); let mx = 0;
+    for(let i=0;i<N;i++){ let m = 0; for(let j=i*step, e=Math.min(ch.length,j+step); j<e; j++){ const v = Math.abs(ch[j]); if(v>m) m=v; } p[i]=m; if(m>mx) mx=m; }
+    if(mx>0) for(let i=0;i<N;i++) p[i]/=mx;
+    peaks = p;
+  }catch(e){}
+}
+
+/* ---------- linha do tempo ---------- */
+function resizeCanvas(){ const r = tl.getBoundingClientRect(), dpr = devicePixelRatio||1; cv.width = r.width*dpr; cv.height = r.height*dpr; }
+addEventListener('resize', resizeCanvas);
+function xOf(t){ return dur ? t/dur*cv.width : 0; }
+function draw(){
+  requestAnimationFrame(draw);
+  if($('#editor').classList.contains('hidden')) return;
+  if(!cv.width) resizeCanvas();
+  const g = cv.getContext('2d'), W = cv.width, H = cv.height, dpr = devicePixelRatio||1;
+  g.clearRect(0,0,W,H);
+  const xa = xOf(selA), xb = xOf(selB);
+  g.fillStyle = 'rgba(59,130,246,.16)'; g.fillRect(xa,0,xb-xa,H);
+  if(peaks){
+    const n = peaks.length, mid = H/2;
+    for(let x=0;x<W;x+=2*dpr){
+      const v = peaks[Math.min(n-1, Math.floor(x/W*n))]*(H*0.42);
+      g.fillStyle = (x>=xa && x<=xb) ? '#60a5fa' : '#3a4560';
+      g.fillRect(x, mid-v, 1.2*dpr, Math.max(1,v*2));
+    }
+  }
+  [xa,xb].forEach((x,i)=>{
+    g.fillStyle = '#3b82f6'; g.fillRect(x-1.5*dpr,0,3*dpr,H);
+    g.fillRect(i===0?x:x-10*dpr, H/2-14*dpr, 10*dpr, 28*dpr);
+  });
+  const xp = xOf(video.currentTime);
+  g.fillStyle = '#fff'; g.fillRect(xp-dpr*0.75,0,1.5*dpr,H);
+  if(previewing && video.currentTime >= selB){ video.pause(); previewing = false; }
+  $('#len').textContent = 'Trecho: '+fmt(selB-selA);
+}
+requestAnimationFrame(draw);
+
+function tAt(ev){ const r = tl.getBoundingClientRect(); return Math.max(0, Math.min(dur, (ev.clientX-r.left)/r.width*dur)); }
+tl.addEventListener('pointerdown', ev=>{
+  if(!dur) return;
+  const r = tl.getBoundingClientRect(), x = ev.clientX-r.left;
+  const da = Math.abs(x-selA/dur*r.width), db = Math.abs(x-selB/dur*r.width);
+  if(Math.min(da,db) < 14) drag = (da<=db) ? 'a' : 'b';
+  else { drag = 'seek'; video.currentTime = tAt(ev); }
+  tl.setPointerCapture(ev.pointerId);
+});
+tl.addEventListener('pointermove', ev=>{
+  if(!dur) return;
+  if(!drag){ const r=tl.getBoundingClientRect(), x=ev.clientX-r.left; tl.style.cursor = (Math.abs(x-selA/dur*r.width)<14||Math.abs(x-selB/dur*r.width)<14)?'ew-resize':'pointer'; return; }
+  const t = tAt(ev);
+  if(drag==='a'){ selA = Math.min(t, selB-0.1); video.currentTime = selA; }
+  else if(drag==='b'){ selB = Math.max(t, selA+0.1); video.currentTime = selB; }
+  else video.currentTime = t;
+  syncInputs();
+});
+tl.addEventListener('pointerup', ()=> drag = null);
+
+/* ---------- campos ---------- */
+function syncInputs(){ $('#inA').value = fmt(selA); $('#inB').value = fmt(selB); }
+function setA(t){ if(isNaN(t)) return syncInputs(); selA = Math.max(0, Math.min(t, selB-0.1)); syncInputs(); }
+function setB(t){ if(isNaN(t)) return syncInputs(); selB = Math.max(t, selA+0.1); if(dur) selB = Math.min(dur, selB); syncInputs(); }
+$('#inA').onchange = e => setA(parseT(e.target.value));
+$('#inB').onchange = e => setB(parseT(e.target.value));
+$('#markA').onclick = () => setA(video.currentTime);
+$('#markB').onclick = () => setB(video.currentTime);
+$('#resetSel').onclick = () => { selA = 0; selB = dur; syncInputs(); };
+$('#preview').onclick = () => { video.currentTime = selA; previewing = true; video.play().catch(()=>{}); };
+video.addEventListener('pause', ()=> previewing = false);
+
+document.addEventListener('keydown', e=>{
+  if(!dur || e.target.tagName==='INPUT' || e.target.tagName==='SELECT') return;
+  const k = e.key.toLowerCase();
+  if(k===' '){ e.preventDefault(); video.paused ? video.play() : video.pause(); }
+  else if(k==='i') setA(video.currentTime);
+  else if(k==='o') setB(video.currentTime);
+  else if(k==='arrowleft'){ e.preventDefault(); video.currentTime = Math.max(0, video.currentTime-(e.shiftKey?0.1:1)); }
+  else if(k==='arrowright'){ e.preventDefault(); video.currentTime = Math.min(dur, video.currentTime+(e.shiftKey?0.1:1)); }
+});
+
+/* ---------- comandos FFmpeg ---------- */
+function stem(){ return file.name.replace(/\.[^.]+$/, ''); }
+function srcExt(){ const m = /\.([a-z0-9]+)$/i.exec(file.name); const e = m ? m[1].toLowerCase() : 'mp4'; return ['mp4','mov','m4v','mkv','webm','avi','ts','mts'].includes(e) ? e : 'mp4'; }
+
+function cutJob(){
+  const a = selA, d = Math.max(0.1, selB-selA), mute = $('#mute').checked, precise = $('#mode').value==='precise';
+  const maps = ['-map','0:v:0?'].concat(mute ? [] : ['-map','0:a?']);
+  const ext = precise ? 'mp4' : srcExt();
+  const outName = stem()+'_corte_'+tname(selA)+'-'+tname(selB)+(mute?'_sem-som':'')+'.'+ext;
+  const out = '/out/out.'+ext;
+  let args = ['-hide_banner','-y','-ss',a.toFixed(3),'-i','/in/'+file.name,'-t',d.toFixed(3)].concat(maps);
+  if(precise) args = args.concat(['-c:v','libx264','-preset','ultrafast','-crf','20','-pix_fmt','yuv420p'], mute?[]:['-c:a','aac','-b:a','192k'], ['-movflags','+faststart', out]);
+  else args = args.concat(['-c','copy','-avoid_negative_ts','make_zero'], ['mp4','mov','m4v'].includes(ext)?['-movflags','+faststart']:[], [out]);
+  return {args, outFile:'out.'+ext, outName, dur:d, type: ext==='webm'?'video/webm':'video/mp4'};
+}
+function audioJob(){
+  const whole = $('#whole').checked, fmtSel = $('#afmt').value, kbps = $('#akbps').value;
+  const codec = {mp3:['-c:a','libmp3lame','-b:a',kbps+'k'], m4a:['-c:a','aac','-b:a',kbps+'k'], wav:['-c:a','pcm_s16le']}[fmtSel];
+  const inArgs = whole ? ['-i','/in/'+file.name] : ['-ss',selA.toFixed(3),'-i','/in/'+file.name,'-t',Math.max(0.1,selB-selA).toFixed(3)];
+  const outName = stem()+(whole?'_audio':'_audio_'+tname(selA)+'-'+tname(selB))+'.'+fmtSel;
+  return {args:['-hide_banner','-y'].concat(inArgs, ['-vn','-map','0:a:0'], codec, ['/out/out.'+fmtSel]), outFile:'out.'+fmtSel, outName,
+          dur: whole ? dur : selB-selA, type: {mp3:'audio/mpeg', m4a:'audio/mp4', wav:'audio/wav'}[fmtSel]};
+}
+
+async function runJob(job, label){
+  if(busy || !ready || !file) return;
+  busy = true; updateButtons(); $('#cancelRow').classList.remove('hidden');
+  status('⏳ '+label+'…'); setProgress(0);
+  const t0 = performance.now();
+  onLog = line => { const m = /time=(\d+):(\d+):([\d.]+)/.exec(line); if(m && job.dur) setProgress(((+m[1])*3600+(+m[2])*60+(+m[3]))/job.dur); };
+  try{
+    const r = await call({cmd:'run', file, args: job.args, outName: job.outFile});
+    const blob = new Blob([r.data], {type: job.type});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = job.outName;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 60000);
+    status('✅ Pronto: <b>'+esc(job.outName)+'</b> ('+fmtSize(blob.size)+', '+((performance.now()-t0)/1000).toFixed(1)+' s) — está na pasta Downloads.', 'ok');
+  }catch(e){
+    if(e.message !== 'cancelado') status('Não deu certo.<pre>'+esc(e.message)+'</pre>', 'err');
+  }
+  onLog = null; busy = false; setProgress(null); $('#cancelRow').classList.add('hidden'); updateButtons();
+}
+
+$('#btnCancel').onclick = () => {
+  Object.values(pending).forEach(p => p.rej(new Error('cancelado'))); pending = {};
+  worker.terminate(); status('Cancelado.'); startWorker();
+};
+
+const modeNotes = {
+  fast: 'Sai na hora, sem perder qualidade. O início pode voltar até uns 2 s, para o quadro-chave mais próximo.',
+  precise: 'Começa exatamente no ponto marcado e sai em MP4. Como roda no navegador, pode levar mais ou menos o tempo do trecho.'
+};
+$('#mode').onchange = () => $('#modeNote').textContent = modeNotes[$('#mode').value];
+$('#mode').onchange();
+$('#afmt').onchange = () => $('#akbps').classList.toggle('hidden', $('#afmt').value==='wav');
+$('#btnVideo').onclick = () => runJob(cutJob(), 'Cortando vídeo');
+$('#btnAudio').onclick = () => runJob(audioJob(), 'Extraindo áudio');
+</script>
+</body>
+</html>
